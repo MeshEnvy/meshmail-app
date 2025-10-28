@@ -1,0 +1,36 @@
+<svg width="200" height="200" viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Mesh network nodes -->
+  <circle cx="50" cy="50" r="8" fill="#007AFF"/>
+  <circle cx="150" cy="50" r="8" fill="#007AFF"/>
+  <circle cx="100" cy="100" r="8" fill="#007AFF"/>
+  <circle cx="50" cy="150" r="8" fill="#007AFF"/>
+  <circle cx="150" cy="150" r="8" fill="#007AFF"/>
+  
+  <!-- Mesh network connections -->
+  <line x1="50" y1="50" x2="150" y2="50" stroke="#007AFF" stroke-width="2" opacity="0.4"/>
+  <line x1="50" y1="50" x2="100" y2="100" stroke="#007AFF" stroke-width="2" opacity="0.4"/>
+  <line x1="150" y1="50" x2="100" y2="100" stroke="#007AFF" stroke-width="2" opacity="0.4"/>
+  <line x1="100" y1="100" x2="50" y2="150" stroke="#007AFF" stroke-width="2" opacity="0.4"/>
+  <line x1="100" y1="100" x2="150" y2="150" stroke="#007AFF" stroke-width="2" opacity="0.4"/>
+  <line x1="50" y1="150" x2="150" y2="150" stroke="#007AFF" stroke-width="2" opacity="0.4"/>
+  <line x1="50" y1="50" x2="50" y2="150" stroke="#007AFF" stroke-width="2" opacity="0.4"/>
+  <line x1="150" y1="50" x2="150" y2="150" stroke="#007AFF" stroke-width="2" opacity="0.4"/>
+  
+  <!-- Mail envelope integrated into mesh -->
+  <g transform="translate(70, 70)">
+    <!-- Envelope body -->
+    <rect x="0" y="10" width="60" height="40" rx="3" fill="#FFFFFF" stroke="#007AFF" stroke-width="2.5"/>
+    
+    <!-- Envelope flap (open) -->
+    <path d="M 0 10 L 30 30 L 60 10" fill="none" stroke="#007AFF" stroke-width="2.5" stroke-linejoin="round"/>
+    <path d="M 0 10 L 30 30 L 60 10 L 60 50 L 0 50 Z" fill="#E3F2FF" stroke="#007AFF" stroke-width="2.5" stroke-linejoin="round"/>
+    
+    <!-- Letter inside -->
+    <rect x="10" y="22" width="40" height="3" fill="#007AFF" opacity="0.3" rx="1"/>
+    <rect x="10" y="30" width="40" height="3" fill="#007AFF" opacity="0.3" rx="1"/>
+    <rect x="10" y="38" width="25" height="3" fill="#007AFF" opacity="0.3" rx="1"/>
+  </g>
+  
+  <!-- Highlight the center node (the envelope is on top of it) -->
+  <circle cx="100" cy="100" r="10" fill="none" stroke="#007AFF" stroke-width="2" opacity="0.6"/>
+</svg>
