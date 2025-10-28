@@ -1,9 +1,11 @@
 import React, { useEffect, useState } from 'react'
 import { StatusBar } from 'expo-status-bar'
-import { StyleSheet, View, ActivityIndicator, Text } from 'react-native'
+import { StyleSheet, View, ActivityIndicator, Text, Alert } from 'react-native'
 import SetupScreen from './screens/SetupScreen'
 import MainScreen from './screens/MainScreen'
 import Logo from './assets/Logo'
+import { ConvexProvider } from 'convex/react'
+import { convex } from './lib/convexClient'
 import {
   hasKeyPair,
   generateKeyPair,
@@ -11,6 +13,7 @@ import {
   loadKeyPair,
   loadMeshHandle,
   saveMeshHandle,
+  resetAllData,
   type KeyPair,
 } from './lib/crypto'
 
@@ -27,6 +30,7 @@ export default function App() {
 
   async function initializeApp() {
     try {
+      const forceSetup = process.env.EXPO_PUBLIC_FORCE_ONBOARDING === '1'
       // Check if keypair exists
       const hasKeys = await hasKeyPair()
 
@@ -43,10 +47,10 @@ export default function App() {
         setKeyPair(existingKeyPair)
       }
 
-      // Check if mesh handle is set
+      // Check if mesh handle is set or force setup
       const existingHandle = await loadMeshHandle()
 
-      if (!existingHandle) {
+      if (forceSetup || !existingHandle) {
         // Need to set up mesh handle
         setAppState('setup')
       } else {
@@ -58,6 +62,24 @@ export default function App() {
       console.error('Failed to initialize app:', error)
       // TODO: Show error screen
     }
+  }
+
+  async function devResetOnboarding() {
+    Alert.alert(
+      'Reset Onboarding',
+      'This will clear your MeshMail address, keys, and signature. Are you sure?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Reset',
+          style: 'destructive',
+          onPress: async () => {
+            await resetAllData()
+            setAppState('setup')
+          },
+        },
+      ]
+    )
   }
 
   async function handleSetupComplete(handle: string) {
@@ -72,34 +94,37 @@ export default function App() {
     }
   }
 
-  if (appState === 'loading') {
-    return (
-      <View style={styles.container}>
-        <Logo size={120} />
-        <ActivityIndicator size="large" color="#007AFF" style={styles.loader} />
-        <Text style={styles.loadingText}>Initializing MeshMail...</Text>
-        <StatusBar style="auto" />
-      </View>
-    )
-  }
-
-  if (appState === 'setup') {
-    return (
-      <>
-        <SetupScreen onComplete={handleSetupComplete} />
-        <StatusBar style="auto" />
-      </>
-    )
-  }
-
   return (
-    <>
-      <MainScreen
-        meshHandle={meshHandle}
-        publicKey={keyPair?.publicKey || ''}
-      />
-      <StatusBar style="auto" />
-    </>
+    <ConvexProvider client={convex}>
+      {appState === 'loading' && (
+        <View style={styles.container}>
+          <Logo size={120} />
+          <ActivityIndicator
+            size="large"
+            color="#007AFF"
+            style={styles.loader}
+          />
+          <Text style={styles.loadingText}>Initializing MeshMail...</Text>
+          <StatusBar style="auto" />
+        </View>
+      )}
+      {appState === 'setup' && (
+        <>
+          <SetupScreen onComplete={handleSetupComplete} />
+          <StatusBar style="auto" />
+        </>
+      )}
+      {appState === 'ready' && (
+        <>
+          <MainScreen
+            meshHandle={meshHandle}
+            publicKey={keyPair?.publicKey || ''}
+            onDevReset={__DEV__ ? devResetOnboarding : undefined}
+          />
+          <StatusBar style="auto" />
+        </>
+      )}
+    </ConvexProvider>
   )
 }
 

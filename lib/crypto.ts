@@ -7,6 +7,11 @@ import { sha512 } from '@noble/hashes/sha2.js'
 ed25519.hashes.sha512 = sha512
 ed25519.hashes.sha512Async = (m: Uint8Array) => Promise.resolve(sha512(m))
 
+// Authority public key (Ed25519, exported from GCP KMS)
+export const AUTHORITY_PUBLIC_KEY_PEM = `-----BEGIN PUBLIC KEY-----
+MCowBQYDK2VwAyEAAqj8xwn6RCmZuOLPtRwaVSTzJ71SS1aEf2XCi4IEnDA=
+-----END PUBLIC KEY-----`
+
 const KEYS = {
   PRIVATE_KEY: 'meshmail_private_key',
   PUBLIC_KEY: 'meshmail_public_key',
@@ -123,4 +128,70 @@ export async function deleteAllKeys(): Promise<void> {
   await SecureStore.deleteItemAsync(KEYS.PUBLIC_KEY)
   await SecureStore.deleteItemAsync(KEYS.AUTHORITY_SIGNATURE)
   // Note: We keep the mesh handle since it's the user's identity
+}
+
+/**
+ * Development/testing helper: fully reset onboarding by clearing keys AND address.
+ * Do not call this in production flows unless doing an explicit key rotation UX.
+ */
+export async function resetAllData(): Promise<void> {
+  await SecureStore.deleteItemAsync(KEYS.PRIVATE_KEY)
+  await SecureStore.deleteItemAsync(KEYS.PUBLIC_KEY)
+  await SecureStore.deleteItemAsync(KEYS.AUTHORITY_SIGNATURE)
+  await SecureStore.deleteItemAsync(KEYS.MESH_HANDLE)
+}
+
+/**
+ * Build canonical attestation message (must match server-side format exactly).
+ */
+export function buildAttestationMessage(
+  address: string,
+  publicKeyHex: string
+): string {
+  const normalized = address.toLowerCase()
+  return `meshmail.attestation.v1\naddress: ${normalized}\npubkey_ed25519_hex: ${publicKeyHex}`
+}
+
+/**
+ * Verify an authority signature on an attestation.
+ * Returns true if signature is valid.
+ */
+export async function verifyAttestation(
+  address: string,
+  publicKeyHex: string,
+  signatureBase64: string
+): Promise<boolean> {
+  try {
+    // Reconstruct the canonical message
+    const message = buildAttestationMessage(address, publicKeyHex)
+    const messageBytes = new TextEncoder().encode(message)
+
+    // Decode signature from base64
+    const signatureBytes = hexToBytes(
+      Buffer.from(signatureBase64, 'base64').toString('hex')
+    )
+
+    // Extract Ed25519 public key from PEM
+    // PEM format for Ed25519: 12 bytes prefix + 32 bytes public key
+    const pemBody = AUTHORITY_PUBLIC_KEY_PEM.replace(
+      /-----BEGIN PUBLIC KEY-----/,
+      ''
+    )
+      .replace(/-----END PUBLIC KEY-----/, '')
+      .replace(/\s/g, '')
+    const derBytes = hexToBytes(Buffer.from(pemBody, 'base64').toString('hex'))
+
+    // Ed25519 public key is the last 32 bytes of the DER encoding
+    const authorityPublicKeyBytes = derBytes.slice(-32)
+
+    // Verify signature
+    return await ed25519.verify(
+      signatureBytes,
+      messageBytes,
+      authorityPublicKeyBytes
+    )
+  } catch (error) {
+    console.error('Signature verification failed:', error)
+    return false
+  }
 }

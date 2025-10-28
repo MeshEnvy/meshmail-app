@@ -8,6 +8,10 @@
  * @module
  */
 
+import type * as lib_kms from "../lib/kms.js";
+import type * as nodeActions from "../nodeActions.js";
+import type * as users from "../users.js";
+
 import type {
   ApiFromModules,
   FilterApi,
@@ -22,7 +26,11 @@ import type {
  * const myFunctionReference = api.myModule.myFunction;
  * ```
  */
-declare const fullApi: ApiFromModules<{}>;
+declare const fullApi: ApiFromModules<{
+  "lib/kms": typeof lib_kms;
+  nodeActions: typeof nodeActions;
+  users: typeof users;
+}>;
 declare const fullApiWithMounts: typeof fullApi;
 
 export declare const api: FilterApi<

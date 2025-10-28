@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import {
   View,
   Text,
@@ -9,20 +9,59 @@ import {
   Alert,
 } from 'react-native'
 import Logo from '../assets/Logo'
+import { useConvex } from 'convex/react'
+import { loadKeyPair, saveAuthoritySignature } from '../lib/crypto'
 
 interface SetupScreenProps {
   onComplete: (handle: string) => void
 }
 
 export default function SetupScreen({ onComplete }: SetupScreenProps) {
+  const convex = useConvex()
   const [handle, setHandle] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [checking, setChecking] = useState(false)
+  const [available, setAvailable] = useState<boolean | null>(null)
 
   const handleTextChange = (text: string) => {
     // Only allow letters, numbers, and periods, max 16 characters
     const filtered = text.replace(/[^a-zA-Z0-9.]/g, '').slice(0, 16)
     setHandle(filtered)
   }
+
+  const isFormatValid = useMemo(
+    () => /^[a-zA-Z0-9.]{1,16}$/.test(handle),
+    [handle]
+  )
+
+  // Debounced availability check against Convex
+  useEffect(() => {
+    // Reset availability when input changes
+    setAvailable(null)
+
+    const trimmed = handle.trim()
+    if (!trimmed || !/^[a-zA-Z0-9.]{1,16}$/.test(trimmed)) {
+      setChecking(false)
+      return
+    }
+
+    setChecking(true)
+    const t = setTimeout(async () => {
+      try {
+        const res = (await (convex as any).query('users:isAddressAvailable', {
+          address: trimmed,
+        })) as { available: boolean }
+        setAvailable(res.available)
+      } catch (e) {
+        // Network or server error: don't block user permanently
+        setAvailable(null)
+      } finally {
+        setChecking(false)
+      }
+    }, 350)
+
+    return () => clearTimeout(t)
+  }, [handle, convex])
 
   const handleSubmit = async () => {
     const trimmedHandle = handle.trim()
@@ -49,11 +88,42 @@ export default function SetupScreen({ onComplete }: SetupScreenProps) {
       return
     }
 
+    if (available === false) {
+      Alert.alert('Address Unavailable', 'That address is already taken')
+      return
+    }
+
     setIsSubmitting(true)
     try {
+      // Load the keypair that was generated on app init
+      const keyPair = await loadKeyPair()
+      if (!keyPair) {
+        throw new Error('No keypair found')
+      }
+
+      // Register address with Convex (gets KMS signature)
+      // Use the Node.js action instead of the old mutation
+      const result = (await (convex as any).action(
+        'nodeActions:registerAddressAction',
+        {
+          address: trimmedHandle,
+          publicKey: keyPair.publicKey,
+        }
+      )) as { signature: string }
+
+      // Store the authority signature in keychain
+      await saveAuthoritySignature(result.signature)
+
+      // Complete onboarding
       await onComplete(trimmedHandle)
     } catch (error) {
-      Alert.alert('Error', 'Failed to set up your MeshMail address')
+      console.error('Registration error:', error)
+      Alert.alert(
+        'Registration Failed',
+        error instanceof Error
+          ? error.message
+          : 'Failed to register your MeshMail address'
+      )
       setIsSubmitting(false)
     }
   }
@@ -96,10 +166,16 @@ export default function SetupScreen({ onComplete }: SetupScreenProps) {
         <TouchableOpacity
           style={[
             styles.button,
-            (isSubmitting || handle.length < 1) && styles.buttonDisabled,
+            (isSubmitting ||
+              !isFormatValid ||
+              checking ||
+              available === false) &&
+              styles.buttonDisabled,
           ]}
           onPress={handleSubmit}
-          disabled={isSubmitting || handle.length < 1}
+          disabled={
+            isSubmitting || !isFormatValid || checking || available === false
+          }
         >
           {isSubmitting ? (
             <ActivityIndicator color="#fff" />
