@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from 'react'
 import { StatusBar } from 'expo-status-bar'
 import { StyleSheet, View, ActivityIndicator, Text, Alert } from 'react-native'
+import { SafeAreaProvider } from 'react-native-safe-area-context'
 import SetupScreen from './screens/SetupScreen'
 import MainScreen from './screens/MainScreen'
+import BackupScreen from './screens/BackupScreen'
 import Logo from './assets/Logo'
 import { ConvexProvider } from 'convex/react'
 import { convex } from './lib/convexClient'
@@ -14,10 +16,12 @@ import {
   loadMeshHandle,
   saveMeshHandle,
   resetAllData,
+  generateBackupCode,
   type KeyPair,
 } from './lib/crypto'
+import { clearAllTaskData, initializeDefaultNotifications } from './lib/tasks'
 
-type AppState = 'loading' | 'setup' | 'ready'
+type AppState = 'loading' | 'setup' | 'ready' | 'backup'
 
 export default function App() {
   const [appState, setAppState] = useState<AppState>('loading')
@@ -58,6 +62,9 @@ export default function App() {
         setMeshHandle(existingHandle)
         setAppState('ready')
       }
+      
+      // Initialize default notifications
+      await initializeDefaultNotifications()
     } catch (error) {
       console.error('Failed to initialize app:', error)
       // TODO: Show error screen
@@ -75,6 +82,7 @@ export default function App() {
           style: 'destructive',
           onPress: async () => {
             await resetAllData()
+            await clearAllTaskData()
             await initializeApp()
           },
         },
@@ -94,37 +102,71 @@ export default function App() {
     }
   }
 
+  async function handleBackup() {
+    try {
+      setAppState('backup')
+    } catch (error) {
+      console.error('Failed to open backup screen:', error)
+      Alert.alert('Error', 'Failed to open backup screen')
+    }
+  }
+
+  function handleBackupComplete() {
+    setAppState('ready')
+  }
+
+  function handleNotificationAction(actionType: string) {
+    if (actionType === 'backup') {
+      setAppState('backup')
+    }
+    // Add other action types as needed
+  }
+
   return (
-    <ConvexProvider client={convex}>
-      {appState === 'loading' && (
-        <View style={styles.container}>
-          <Logo size={120} />
-          <ActivityIndicator
-            size="large"
-            color="#007AFF"
-            style={styles.loader}
-          />
-          <Text style={styles.loadingText}>Initializing MeshMail...</Text>
-          <StatusBar style="auto" />
-        </View>
-      )}
-      {appState === 'setup' && (
-        <>
-          <SetupScreen onComplete={handleSetupComplete} />
-          <StatusBar style="auto" />
-        </>
-      )}
-      {appState === 'ready' && (
-        <>
-          <MainScreen
-            meshHandle={meshHandle}
-            publicKey={keyPair?.publicKey || ''}
-            onDevReset={__DEV__ ? devResetOnboarding : undefined}
-          />
-          <StatusBar style="auto" />
-        </>
-      )}
-    </ConvexProvider>
+    <SafeAreaProvider>
+      <ConvexProvider client={convex}>
+        {appState === 'loading' && (
+          <View style={styles.container}>
+            <Logo size={120} />
+            <ActivityIndicator
+              size="large"
+              color="#007AFF"
+              style={styles.loader}
+            />
+            <Text style={styles.loadingText}>Initializing MeshMail...</Text>
+            <StatusBar style="auto" />
+          </View>
+        )}
+        {appState === 'setup' && (
+          <>
+            <SetupScreen onComplete={handleSetupComplete} />
+            <StatusBar style="auto" />
+          </>
+        )}
+        {appState === 'ready' && (
+          <>
+            <MainScreen
+              meshHandle={meshHandle}
+              publicKey={keyPair?.publicKey || ''}
+              onDevReset={__DEV__ ? devResetOnboarding : undefined}
+              onBackup={handleBackup}
+              onNotificationAction={handleNotificationAction}
+            />
+            <StatusBar style="auto" />
+          </>
+        )}
+        {appState === 'backup' && (
+          <>
+            <BackupScreen
+              meshHandle={meshHandle}
+              onComplete={handleBackupComplete}
+              onBackupComplete={handleBackupComplete}
+            />
+            <StatusBar style="auto" />
+          </>
+        )}
+      </ConvexProvider>
+    </SafeAreaProvider>
   )
 }
 
