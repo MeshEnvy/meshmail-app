@@ -16,21 +16,77 @@ interface SetupScreenProps {
   onComplete: (handle: string) => void
 }
 
+// Reserved prefixes that cannot be used for addresses
+const RESERVED_PREFIXES = [
+  '911',
+  'help',
+  'info',
+  'admin',
+  'support',
+  'noreply',
+  'postmaster',
+  'abuse',
+  'security',
+  'root',
+  'system',
+  'mail',
+  'test',
+]
+
+function validateAddressFormat(address: string): {
+  valid: boolean
+  error?: string
+} {
+  // Must be lowercase
+  if (address !== address.toLowerCase()) {
+    return { valid: false, error: 'Must be lowercase' }
+  }
+
+  // Must be 1-16 characters, only letters, numbers, and periods
+  if (!/^[a-z0-9.]{1,16}$/.test(address)) {
+    if (address.length === 0) {
+      return { valid: false, error: 'Required' }
+    }
+    if (address.length > 16) {
+      return { valid: false, error: 'Max 16 characters' }
+    }
+    return { valid: false, error: 'Letters, numbers, periods only' }
+  }
+
+  // Must start with a letter
+  if (!/^[a-z]/.test(address)) {
+    return { valid: false, error: 'Must start with a letter' }
+  }
+
+  // Check reserved prefixes
+  for (const prefix of RESERVED_PREFIXES) {
+    if (address.startsWith(prefix)) {
+      return { valid: false, error: `"${prefix}" prefix is reserved` }
+    }
+  }
+
+  return { valid: true }
+}
+
 export default function SetupScreen({ onComplete }: SetupScreenProps) {
   const convex = useConvex()
   const [handle, setHandle] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [checking, setChecking] = useState(false)
   const [available, setAvailable] = useState<boolean | null>(null)
+  const [errorMessage, setErrorMessage] = useState<string>('')
 
   const handleTextChange = (text: string) => {
-    // Only allow letters, numbers, and periods, max 16 characters
-    const filtered = text.replace(/[^a-zA-Z0-9.]/g, '').slice(0, 16)
+    // Only allow lowercase letters, numbers, and periods, max 16 characters
+    const filtered = text
+      .toLowerCase()
+      .replace(/[^a-z0-9.]/g, '')
+      .slice(0, 16)
     setHandle(filtered)
   }
 
-  const isFormatValid = useMemo(
-    () => /^[a-zA-Z0-9.]{1,16}$/.test(handle),
+  const formatValidation = useMemo(
+    () => validateAddressFormat(handle),
     [handle]
   )
 
@@ -38,9 +94,17 @@ export default function SetupScreen({ onComplete }: SetupScreenProps) {
   useEffect(() => {
     // Reset availability when input changes
     setAvailable(null)
+    setErrorMessage('')
 
     const trimmed = handle.trim()
-    if (!trimmed || !/^[a-zA-Z0-9.]{1,16}$/.test(trimmed)) {
+    if (!trimmed) {
+      return
+    }
+
+    // Check format first
+    const validation = validateAddressFormat(trimmed)
+    if (!validation.valid) {
+      setErrorMessage(validation.error!)
       setChecking(false)
       return
     }
@@ -50,11 +114,43 @@ export default function SetupScreen({ onComplete }: SetupScreenProps) {
       try {
         const res = (await (convex as any).query('users:isAddressAvailable', {
           address: trimmed,
-        })) as { available: boolean }
+        })) as {
+          available: boolean
+          reason:
+            | 'available'
+            | 'taken'
+            | 'invalid_format'
+            | 'must_start_with_letter'
+            | 'reserved_prefix'
+            | 'must_be_lowercase'
+        }
+
         setAvailable(res.available)
+        if (!res.available) {
+          switch (res.reason) {
+            case 'taken':
+              setErrorMessage('Address already taken')
+              break
+            case 'must_start_with_letter':
+              setErrorMessage('Must start with a letter')
+              break
+            case 'reserved_prefix':
+              setErrorMessage('This prefix is reserved')
+              break
+            case 'must_be_lowercase':
+              setErrorMessage('Must be lowercase')
+              break
+            case 'invalid_format':
+              setErrorMessage('Invalid format')
+              break
+          }
+        } else {
+          setErrorMessage('')
+        }
       } catch (e) {
         // Network or server error: don't block user permanently
         setAvailable(null)
+        setErrorMessage('')
       } finally {
         setChecking(false)
       }
@@ -71,25 +167,17 @@ export default function SetupScreen({ onComplete }: SetupScreenProps) {
       return
     }
 
-    // Validate handle format (alphanumeric and periods only)
-    if (!/^[a-zA-Z0-9.]+$/.test(trimmedHandle)) {
-      Alert.alert(
-        'Invalid Address',
-        'Address can only contain letters, numbers, and periods'
-      )
-      return
-    }
-
-    if (trimmedHandle.length < 1 || trimmedHandle.length > 16) {
-      Alert.alert(
-        'Invalid Address',
-        'Address must be between 1 and 16 characters'
-      )
+    const validation = validateAddressFormat(trimmedHandle)
+    if (!validation.valid) {
+      Alert.alert('Invalid Address', validation.error!)
       return
     }
 
     if (available === false) {
-      Alert.alert('Address Unavailable', 'That address is already taken')
+      Alert.alert(
+        'Address Unavailable',
+        errorMessage || 'That address is not available'
+      )
       return
     }
 
@@ -142,7 +230,12 @@ export default function SetupScreen({ onComplete }: SetupScreenProps) {
             This will be your unique identifier on the mesh network
           </Text>
 
-          <View style={styles.inputContainer}>
+          <View
+            style={[
+              styles.inputContainer,
+              errorMessage && styles.inputContainerError,
+            ]}
+          >
             <Text style={styles.prefix}>@</Text>
             <TextInput
               style={styles.input}
@@ -156,25 +249,46 @@ export default function SetupScreen({ onComplete }: SetupScreenProps) {
               returnKeyType="done"
               onSubmitEditing={handleSubmit}
             />
+            {checking && (
+              <ActivityIndicator
+                size="small"
+                color="#007AFF"
+                style={styles.indicator}
+              />
+            )}
+            {!checking && errorMessage && (
+              <Text style={styles.errorIcon}>✗</Text>
+            )}
+            {!checking && available === true && handle.trim() && (
+              <Text style={styles.successIcon}>✓</Text>
+            )}
           </View>
 
-          <Text style={styles.note}>
-            Letters, numbers, and periods only (1-16 characters)
-          </Text>
+          {errorMessage ? (
+            <Text style={styles.errorText}>{errorMessage}</Text>
+          ) : (
+            <Text style={styles.note}>
+              Lowercase letters, numbers, periods • Start with letter • 1-16
+              chars
+            </Text>
+          )}
         </View>
 
         <TouchableOpacity
           style={[
             styles.button,
             (isSubmitting ||
-              !isFormatValid ||
+              !formatValidation.valid ||
               checking ||
               available === false) &&
               styles.buttonDisabled,
           ]}
           onPress={handleSubmit}
           disabled={
-            isSubmitting || !isFormatValid || checking || available === false
+            isSubmitting ||
+            !formatValidation.valid ||
+            checking ||
+            available === false
           }
         >
           {isSubmitting ? (
@@ -238,6 +352,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     backgroundColor: '#F8F9FA',
   },
+  inputContainerError: {
+    borderColor: '#FF3B30',
+  },
   prefix: {
     fontSize: 20,
     fontWeight: '600',
@@ -250,10 +367,31 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     color: '#000',
   },
+  indicator: {
+    marginLeft: 8,
+  },
+  errorIcon: {
+    fontSize: 20,
+    color: '#FF3B30',
+    marginLeft: 8,
+    fontWeight: 'bold',
+  },
+  successIcon: {
+    fontSize: 20,
+    color: '#34C759',
+    marginLeft: 8,
+    fontWeight: 'bold',
+  },
   note: {
     fontSize: 12,
     color: '#999',
     marginTop: 8,
+  },
+  errorText: {
+    fontSize: 12,
+    color: '#FF3B30',
+    marginTop: 8,
+    fontWeight: '500',
   },
   button: {
     backgroundColor: '#007AFF',

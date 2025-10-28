@@ -14,29 +14,34 @@ export const registerAddressAction = action({
     publicKey: v.string(),
   },
   handler: async (ctx, { address, publicKey }) => {
-    const trimmed = address.trim()
-
-    // Validate address format
-    if (!/^[a-zA-Z0-9.]{1,16}$/.test(trimmed)) {
-      throw new Error('Invalid address format')
-    }
+    const trimmed = address.trim().toLowerCase()
 
     // Validate public key format
     if (!/^[a-f0-9]{64}$/i.test(publicKey)) {
       throw new Error('Invalid public key format')
     }
 
-    // Check if address is available
+    // Check if address is available (this also validates the format)
     const availability = await ctx.runQuery(api.users.isAddressAvailable, {
       address: trimmed,
     })
 
     if (!availability.available) {
-      throw new Error(
-        availability.reason === 'invalid'
-          ? 'Invalid address format'
-          : 'Address already taken'
-      )
+      // Provide user-friendly error messages
+      switch (availability.reason) {
+        case 'taken':
+          throw new Error('Address already taken')
+        case 'must_start_with_letter':
+          throw new Error('Address must start with a letter')
+        case 'reserved_prefix':
+          throw new Error('This address prefix is reserved')
+        case 'must_be_lowercase':
+          throw new Error('Address must be lowercase')
+        case 'invalid_format':
+          throw new Error('Invalid address format')
+        default:
+          throw new Error('Address not available')
+      }
     }
 
     // Sign using KMS
