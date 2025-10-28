@@ -1,0 +1,126 @@
+import * as Crypto from 'expo-crypto'
+import * as SecureStore from 'expo-secure-store'
+import * as ed25519 from '@noble/ed25519'
+import { sha512 } from '@noble/hashes/sha2.js'
+
+// Configure SHA512 for ed25519 (required for React Native)
+ed25519.hashes.sha512 = sha512
+ed25519.hashes.sha512Async = (m: Uint8Array) => Promise.resolve(sha512(m))
+
+const KEYS = {
+  PRIVATE_KEY: 'meshmail_private_key',
+  PUBLIC_KEY: 'meshmail_public_key',
+  MESH_HANDLE: 'meshmail_mesh_handle',
+  AUTHORITY_SIGNATURE: 'meshmail_authority_signature',
+} as const
+
+export interface KeyPair {
+  privateKey: string
+  publicKey: string
+}
+
+/**
+ * Convert Uint8Array to hex string
+ */
+function bytesToHex(bytes: Uint8Array): string {
+  return Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('')
+}
+
+/**
+ * Convert hex string to Uint8Array
+ */
+function hexToBytes(hex: string): Uint8Array {
+  const bytes = new Uint8Array(hex.length / 2)
+  for (let i = 0; i < hex.length; i += 2) {
+    bytes[i / 2] = parseInt(hex.slice(i, i + 2), 16)
+  }
+  return bytes
+}
+
+/**
+ * Generate a new Ed25519 keypair using expo-crypto for randomness
+ */
+export async function generateKeyPair(): Promise<KeyPair> {
+  // Generate 32 bytes of random data for the private key
+  const randomBytes = await Crypto.getRandomBytesAsync(32)
+  const privateKeyBytes = new Uint8Array(randomBytes)
+
+  // Generate public key from private key
+  const publicKeyBytes = await ed25519.getPublicKey(privateKeyBytes)
+
+  // Convert to hex strings for storage
+  const privateKey = bytesToHex(privateKeyBytes)
+  const publicKey = bytesToHex(publicKeyBytes)
+
+  return { privateKey, publicKey }
+}
+
+/**
+ * Save keypair to secure storage
+ */
+export async function saveKeyPair(keyPair: KeyPair): Promise<void> {
+  await SecureStore.setItemAsync(KEYS.PRIVATE_KEY, keyPair.privateKey)
+  await SecureStore.setItemAsync(KEYS.PUBLIC_KEY, keyPair.publicKey)
+}
+
+/**
+ * Load keypair from secure storage
+ */
+export async function loadKeyPair(): Promise<KeyPair | null> {
+  const privateKey = await SecureStore.getItemAsync(KEYS.PRIVATE_KEY)
+  const publicKey = await SecureStore.getItemAsync(KEYS.PUBLIC_KEY)
+
+  if (!privateKey || !publicKey) {
+    return null
+  }
+
+  return { privateKey, publicKey }
+}
+
+/**
+ * Check if a keypair exists in secure storage
+ */
+export async function hasKeyPair(): Promise<boolean> {
+  const keyPair = await loadKeyPair()
+  return keyPair !== null
+}
+
+/**
+ * Save mesh handle to secure storage
+ */
+export async function saveMeshHandle(handle: string): Promise<void> {
+  await SecureStore.setItemAsync(KEYS.MESH_HANDLE, handle)
+}
+
+/**
+ * Load mesh handle from secure storage
+ */
+export async function loadMeshHandle(): Promise<string | null> {
+  return await SecureStore.getItemAsync(KEYS.MESH_HANDLE)
+}
+
+/**
+ * Save authority signature to secure storage
+ */
+export async function saveAuthoritySignature(signature: string): Promise<void> {
+  await SecureStore.setItemAsync(KEYS.AUTHORITY_SIGNATURE, signature)
+}
+
+/**
+ * Load authority signature from secure storage
+ */
+export async function loadAuthoritySignature(): Promise<string | null> {
+  return await SecureStore.getItemAsync(KEYS.AUTHORITY_SIGNATURE)
+}
+
+/**
+ * Delete all stored keys (for key rotation)
+ */
+export async function deleteAllKeys(): Promise<void> {
+  await SecureStore.deleteItemAsync(KEYS.PRIVATE_KEY)
+  await SecureStore.deleteItemAsync(KEYS.PUBLIC_KEY)
+  await SecureStore.deleteItemAsync(KEYS.AUTHORITY_SIGNATURE)
+  // Note: We keep the mesh handle since it's the user's identity
+}
