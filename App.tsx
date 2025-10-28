@@ -75,7 +75,7 @@ export default function App() {
           style: 'destructive',
           onPress: async () => {
             await resetAllData()
-            setAppState('setup')
+            await initializeApp()
           },
         },
       ]
