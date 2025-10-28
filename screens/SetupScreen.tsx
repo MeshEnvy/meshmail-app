@@ -18,6 +18,8 @@ import {
   saveAuthoritySignature,
   generateBackupCode,
   saveMeshHandle,
+  restoreFromBackup,
+  loadMeshHandle,
 } from '../lib/crypto'
 import QRCode from 'react-native-qrcode-svg'
 
@@ -87,6 +89,9 @@ export default function SetupScreen({ onComplete }: SetupScreenProps) {
   const [showSuccessModal, setShowSuccessModal] = useState(false)
   const [backupCode, setBackupCode] = useState('')
   const [registeredHandle, setRegisteredHandle] = useState('')
+  const [showRestoreModal, setShowRestoreModal] = useState(false)
+  const [restoreCode, setRestoreCode] = useState('')
+  const [isRestoring, setIsRestoring] = useState(false)
 
   const handleTextChange = (text: string) => {
     // Only allow lowercase letters, numbers, and periods, max 16 characters
@@ -253,6 +258,44 @@ export default function SetupScreen({ onComplete }: SetupScreenProps) {
     await onComplete(registeredHandle)
   }
 
+  const handleRestoreAccount = async () => {
+    if (!restoreCode.trim()) {
+      Alert.alert('Error', 'Please enter your recovery code')
+      return
+    }
+
+    setIsRestoring(true)
+    try {
+      // Restore credentials from backup
+      await restoreFromBackup(restoreCode.trim())
+
+      // Load the restored handle
+      const restoredHandle = await loadMeshHandle()
+      if (!restoredHandle) {
+        throw new Error('Failed to load restored handle')
+      }
+
+      // Close modal and complete setup
+      setShowRestoreModal(false)
+      Alert.alert('Account Restored!', `Welcome back, @${restoredHandle}`, [
+        {
+          text: 'Continue',
+          onPress: () => onComplete(restoredHandle),
+        },
+      ])
+    } catch (error) {
+      console.error('Restore error:', error)
+      Alert.alert(
+        'Restore Failed',
+        error instanceof Error
+          ? error.message
+          : 'Invalid recovery code. Please check and try again.'
+      )
+    } finally {
+      setIsRestoring(false)
+    }
+  }
+
   return (
     <View style={styles.container}>
       <View style={styles.content}>
@@ -334,7 +377,76 @@ export default function SetupScreen({ onComplete }: SetupScreenProps) {
             <Text style={styles.buttonText}>Continue</Text>
           )}
         </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.restoreButton}
+          onPress={() => setShowRestoreModal(true)}
+        >
+          <Text style={styles.restoreButtonText}>
+            Already have an account? Restore
+          </Text>
+        </TouchableOpacity>
       </View>
+
+      {/* Restore Modal */}
+      <Modal
+        visible={showRestoreModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowRestoreModal(false)}
+      >
+        <ScrollView style={styles.modalContainer}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Restore Account</Text>
+            </View>
+
+            <Text style={styles.restoreInstructions}>
+              Enter your recovery code or scan the QR code you saved when
+              creating your account.
+            </Text>
+
+            <View style={styles.restoreInputContainer}>
+              <TextInput
+                style={styles.restoreInput}
+                value={restoreCode}
+                onChangeText={setRestoreCode}
+                placeholder="Paste your recovery code here"
+                multiline
+                numberOfLines={4}
+                autoCapitalize="none"
+                autoCorrect={false}
+                editable={!isRestoring}
+              />
+            </View>
+
+            <TouchableOpacity
+              style={[
+                styles.restoreSubmitButton,
+                (!restoreCode.trim() || isRestoring) && styles.buttonDisabled,
+              ]}
+              onPress={handleRestoreAccount}
+              disabled={!restoreCode.trim() || isRestoring}
+            >
+              {isRestoring ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.buttonText}>Restore Account</Text>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.cancelButton}
+              onPress={() => {
+                setShowRestoreModal(false)
+                setRestoreCode('')
+              }}
+            >
+              <Text style={styles.cancelButtonText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      </Modal>
 
       {/* Success Modal */}
       <Modal
@@ -659,5 +771,49 @@ const styles = StyleSheet.create({
   skipButtonText: {
     color: '#999',
     fontSize: 14,
+  },
+  restoreButton: {
+    paddingVertical: 16,
+    alignItems: 'center',
+    marginTop: 16,
+  },
+  restoreButtonText: {
+    color: '#007AFF',
+    fontSize: 16,
+  },
+  restoreInstructions: {
+    fontSize: 16,
+    color: '#666',
+    marginBottom: 24,
+    lineHeight: 24,
+  },
+  restoreInputContainer: {
+    borderWidth: 1,
+    borderColor: '#DDD',
+    borderRadius: 12,
+    padding: 16,
+    backgroundColor: '#F8F9FA',
+    marginBottom: 24,
+  },
+  restoreInput: {
+    fontSize: 14,
+    color: '#000',
+    minHeight: 100,
+    textAlignVertical: 'top',
+  },
+  restoreSubmitButton: {
+    backgroundColor: '#007AFF',
+    paddingVertical: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  cancelButton: {
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  cancelButtonText: {
+    color: '#666',
+    fontSize: 16,
   },
 })
