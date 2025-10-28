@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "meshmail.org",
-    "slug": "meshmail.org",
+    "name": "MeshMail",
+    "slug": "meshmail",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
