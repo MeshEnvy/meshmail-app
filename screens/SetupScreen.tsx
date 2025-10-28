@@ -10,6 +10,8 @@ import {
   Modal,
   ScrollView,
   Share,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native'
 import Logo from '../assets/Logo'
 import { useConvex } from 'convex/react'
@@ -297,96 +299,106 @@ export default function SetupScreen({ onComplete }: SetupScreenProps) {
   }
 
   return (
-    <View style={styles.container}>
-      <View style={styles.content}>
-        <View style={styles.header}>
-          <Logo size={160} />
-          <Text style={styles.title}>MeshMail</Text>
-        </View>
+    <KeyboardAvoidingView 
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+    >
+      <ScrollView 
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.content}>
+          <View style={styles.header}>
+            <Logo size={160} />
+            <Text style={styles.title}>MeshMail</Text>
+          </View>
 
-        <View style={styles.formContainer}>
-          <Text style={styles.label}>Choose your MeshMail Address</Text>
-          <Text style={styles.hint}>
-            This will be your unique identifier on the mesh network
-          </Text>
+          <View style={styles.formContainer}>
+            <Text style={styles.label}>Choose your MeshMail Address</Text>
+            <Text style={styles.hint}>
+              This will be your unique identifier on the mesh network
+            </Text>
 
-          <View
-            style={[
-              styles.inputContainer,
-              errorMessage && styles.inputContainerError,
-            ]}
-          >
-            <Text style={styles.prefix}>@</Text>
-            <TextInput
-              style={styles.input}
-              value={handle}
-              onChangeText={handleTextChange}
-              placeholder="username"
-              autoCapitalize="none"
-              autoCorrect={false}
-              autoFocus
-              editable={!isSubmitting}
-              returnKeyType="done"
-              onSubmitEditing={handleSubmit}
-            />
-            {checking && (
-              <ActivityIndicator
-                size="small"
-                color="#007AFF"
-                style={styles.indicator}
+            <View
+              style={[
+                styles.inputContainer,
+                errorMessage && styles.inputContainerError,
+              ]}
+            >
+              <Text style={styles.prefix}>@</Text>
+              <TextInput
+                style={styles.input}
+                value={handle}
+                onChangeText={handleTextChange}
+                placeholder="username"
+                autoCapitalize="none"
+                autoCorrect={false}
+                autoFocus
+                editable={!isSubmitting}
+                returnKeyType="done"
+                onSubmitEditing={handleSubmit}
               />
-            )}
-            {!checking && errorMessage && (
-              <Text style={styles.errorIcon}>✗</Text>
-            )}
-            {!checking && available === true && handle.trim() && (
-              <Text style={styles.successIcon}>✓</Text>
+              {checking && (
+                <ActivityIndicator
+                  size="small"
+                  color="#007AFF"
+                  style={styles.indicator}
+                />
+              )}
+              {!checking && errorMessage && (
+                <Text style={styles.errorIcon}>✗</Text>
+              )}
+              {!checking && available === true && handle.trim() && (
+                <Text style={styles.successIcon}>✓</Text>
+              )}
+            </View>
+
+            {errorMessage ? (
+              <Text style={styles.errorText}>{errorMessage}</Text>
+            ) : (
+              <Text style={styles.note}>
+                Lowercase letters, numbers, periods • Start with letter • 1-16
+                chars
+              </Text>
             )}
           </View>
 
-          {errorMessage ? (
-            <Text style={styles.errorText}>{errorMessage}</Text>
-          ) : (
-            <Text style={styles.note}>
-              Lowercase letters, numbers, periods • Start with letter • 1-16
-              chars
-            </Text>
-          )}
-        </View>
-
-        <TouchableOpacity
-          style={[
-            styles.button,
-            (isSubmitting ||
+          <TouchableOpacity
+            style={[
+              styles.button,
+              (isSubmitting ||
+                !formatValidation.valid ||
+                checking ||
+                available === false) &&
+                styles.buttonDisabled,
+            ]}
+            onPress={handleSubmit}
+            disabled={
+              isSubmitting ||
               !formatValidation.valid ||
               checking ||
-              available === false) &&
-              styles.buttonDisabled,
-          ]}
-          onPress={handleSubmit}
-          disabled={
-            isSubmitting ||
-            !formatValidation.valid ||
-            checking ||
-            available === false
-          }
-        >
-          {isSubmitting ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text style={styles.buttonText}>Continue</Text>
-          )}
-        </TouchableOpacity>
+              available === false
+            }
+          >
+            {isSubmitting ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.buttonText}>Continue</Text>
+            )}
+          </TouchableOpacity>
 
-        <TouchableOpacity
-          style={styles.restoreButton}
-          onPress={() => setShowRestoreModal(true)}
-        >
-          <Text style={styles.restoreButtonText}>
-            Already have an account? Restore
-          </Text>
-        </TouchableOpacity>
-      </View>
+          <TouchableOpacity
+            style={styles.restoreButton}
+            onPress={() => setShowRestoreModal(true)}
+          >
+            <Text style={styles.restoreButtonText}>
+              Already have an account? Restore
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
 
       {/* Restore Modal */}
       <Modal
@@ -529,7 +541,7 @@ export default function SetupScreen({ onComplete }: SetupScreenProps) {
           </View>
         </ScrollView>
       </Modal>
-    </View>
+    </KeyboardAvoidingView>
   )
 }
 
@@ -537,6 +549,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#fff',
+  },
+  scrollContent: {
+    flexGrow: 1,
   },
   content: {
     flex: 1,
