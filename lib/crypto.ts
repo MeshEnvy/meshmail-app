@@ -7,6 +7,27 @@ import { sha512 } from '@noble/hashes/sha2.js'
 ed25519.hashes.sha512 = sha512
 ed25519.hashes.sha512Async = (m: Uint8Array) => Promise.resolve(sha512(m))
 
+// Simple base64 encode/decode for React Native
+const base64Encode = (str: string): string => {
+  // Use btoa-like encoding
+  const bytes = new TextEncoder().encode(str)
+  let binary = ''
+  for (let i = 0; i < bytes.length; i++) {
+    binary += String.fromCharCode(bytes[i])
+  }
+  return btoa(binary)
+}
+
+const base64Decode = (str: string): string => {
+  // Use atob-like decoding
+  const binary = atob(str)
+  const bytes = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i)
+  }
+  return new TextDecoder().decode(bytes)
+}
+
 // Authority public key (Ed25519, exported from GCP KMS)
 export const AUTHORITY_PUBLIC_KEY_PEM = `-----BEGIN PUBLIC KEY-----
 MCowBQYDK2VwAyEAAqj8xwn6RCmZuOLPtRwaVSTzJ71SS1aEf2XCi4IEnDA=
@@ -139,6 +160,69 @@ export async function resetAllData(): Promise<void> {
   await SecureStore.deleteItemAsync(KEYS.PUBLIC_KEY)
   await SecureStore.deleteItemAsync(KEYS.AUTHORITY_SIGNATURE)
   await SecureStore.deleteItemAsync(KEYS.MESH_HANDLE)
+}
+
+/**
+ * Generate a backup recovery code containing all credentials
+ * Returns a base64-encoded string that can be shared or stored as a QR code
+ */
+export async function generateBackupCode(): Promise<string> {
+  const keyPair = await loadKeyPair()
+  const handle = await loadMeshHandle()
+  const signature = await loadAuthoritySignature()
+
+  if (!keyPair || !handle || !signature) {
+    throw new Error('Missing credentials - cannot generate backup')
+  }
+
+  const backup = {
+    version: 1,
+    handle,
+    privateKey: keyPair.privateKey,
+    publicKey: keyPair.publicKey,
+    signature,
+    timestamp: new Date().toISOString(),
+  }
+
+  // Encode as base64 to avoid formatting issues
+  const json = JSON.stringify(backup)
+  return base64Encode(json)
+}
+
+/**
+ * Restore credentials from a backup code
+ */
+export async function restoreFromBackup(backupCode: string): Promise<void> {
+  try {
+    // Decode from base64
+    const json = base64Decode(backupCode)
+    const backup = JSON.parse(json)
+
+    if (backup.version !== 1) {
+      throw new Error('Unsupported backup version')
+    }
+
+    if (
+      !backup.handle ||
+      !backup.privateKey ||
+      !backup.publicKey ||
+      !backup.signature
+    ) {
+      throw new Error('Invalid backup format')
+    }
+
+    // Save all credentials
+    await saveKeyPair({
+      privateKey: backup.privateKey,
+      publicKey: backup.publicKey,
+    })
+    await saveMeshHandle(backup.handle)
+    await saveAuthoritySignature(backup.signature)
+  } catch (error) {
+    throw new Error(
+      `Failed to restore backup: ${error instanceof Error ? error.message : 'Unknown error'}`
+    )
+  }
 }
 
 /**

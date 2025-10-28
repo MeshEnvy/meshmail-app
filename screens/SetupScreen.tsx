@@ -7,10 +7,19 @@ import {
   StyleSheet,
   ActivityIndicator,
   Alert,
+  Modal,
+  ScrollView,
+  Share,
 } from 'react-native'
 import Logo from '../assets/Logo'
 import { useConvex } from 'convex/react'
-import { loadKeyPair, saveAuthoritySignature } from '../lib/crypto'
+import {
+  loadKeyPair,
+  saveAuthoritySignature,
+  generateBackupCode,
+  saveMeshHandle,
+} from '../lib/crypto'
+import QRCode from 'react-native-qrcode-svg'
 
 interface SetupScreenProps {
   onComplete: (handle: string) => void
@@ -75,6 +84,9 @@ export default function SetupScreen({ onComplete }: SetupScreenProps) {
   const [checking, setChecking] = useState(false)
   const [available, setAvailable] = useState<boolean | null>(null)
   const [errorMessage, setErrorMessage] = useState<string>('')
+  const [showSuccessModal, setShowSuccessModal] = useState(false)
+  const [backupCode, setBackupCode] = useState('')
+  const [registeredHandle, setRegisteredHandle] = useState('')
 
   const handleTextChange = (text: string) => {
     // Only allow lowercase letters, numbers, and periods, max 16 characters
@@ -202,8 +214,16 @@ export default function SetupScreen({ onComplete }: SetupScreenProps) {
       // Store the authority signature in keychain
       await saveAuthoritySignature(result.signature)
 
-      // Complete onboarding
-      await onComplete(trimmedHandle)
+      // Save the handle to keychain (needed for backup generation)
+      await saveMeshHandle(trimmedHandle)
+
+      // Generate backup code (now that all credentials are saved)
+      const backup = await generateBackupCode()
+      setBackupCode(backup)
+      setRegisteredHandle(trimmedHandle)
+
+      // Show success modal instead of immediately completing
+      setShowSuccessModal(true)
     } catch (error) {
       console.error('Registration error:', error)
       Alert.alert(
@@ -214,6 +234,23 @@ export default function SetupScreen({ onComplete }: SetupScreenProps) {
       )
       setIsSubmitting(false)
     }
+  }
+
+  const handleDownloadBackup = async () => {
+    try {
+      await Share.share({
+        message: backupCode,
+        title: 'MeshMail Recovery Code',
+      })
+    } catch (error) {
+      console.error('Error sharing backup:', error)
+      Alert.alert('Error', 'Failed to share backup code')
+    }
+  }
+
+  const handleContinue = async () => {
+    setShowSuccessModal(false)
+    await onComplete(registeredHandle)
   }
 
   return (
@@ -298,6 +335,88 @@ export default function SetupScreen({ onComplete }: SetupScreenProps) {
           )}
         </TouchableOpacity>
       </View>
+
+      {/* Success Modal */}
+      <Modal
+        visible={showSuccessModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={handleContinue}
+      >
+        <ScrollView style={styles.modalContainer}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.successEmoji}>✓</Text>
+              <Text style={styles.modalTitle}>Registration Successful!</Text>
+              <Text style={styles.modalHandle}>@{registeredHandle}</Text>
+            </View>
+
+            <View style={styles.infoSection}>
+              <Text style={styles.infoTitle}>🔐 Saved to Keychain</Text>
+              <Text style={styles.infoText}>
+                Your credentials have been securely saved to your device's
+                keychain.
+              </Text>
+            </View>
+
+            <View style={styles.warningSection}>
+              <Text style={styles.warningTitle}>⚠️ Important</Text>
+              <Text style={styles.warningText}>
+                If you lose your device or uninstall this app without a backup,
+                your account will be{' '}
+                <Text style={styles.warningBold}>permanently inaccessible</Text>
+                . There is no password reset or account recovery.
+              </Text>
+            </View>
+
+            <View style={styles.backupSection}>
+              <Text style={styles.backupTitle}>Backup Your Account</Text>
+              <Text style={styles.backupText}>
+                Save your recovery code to restore your account on a new device.
+                Keep it somewhere safe and private.
+              </Text>
+
+              {backupCode && (
+                <View style={styles.qrContainer}>
+                  <QRCode value={backupCode} size={200} />
+                </View>
+              )}
+
+              <TouchableOpacity
+                style={styles.backupButton}
+                onPress={handleDownloadBackup}
+              >
+                <Text style={styles.backupButtonText}>
+                  💾 Share Recovery Code
+                </Text>
+              </TouchableOpacity>
+
+              <Text style={styles.backupNote}>
+                You can also screenshot this QR code or copy the recovery text
+                to your password manager.
+              </Text>
+            </View>
+
+            <TouchableOpacity
+              style={styles.continueButton}
+              onPress={handleContinue}
+            >
+              <Text style={styles.continueButtonText}>
+                Continue to MeshMail
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.skipButton}
+              onPress={handleContinue}
+            >
+              <Text style={styles.skipButtonText}>
+                I'll back up later (not recommended)
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      </Modal>
     </View>
   )
 }
@@ -406,5 +525,139 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 18,
     fontWeight: '600',
+  },
+  // Modal styles
+  modalContainer: {
+    flex: 1,
+    backgroundColor: '#fff',
+  },
+  modalContent: {
+    padding: 24,
+    paddingTop: 48,
+  },
+  modalHeader: {
+    alignItems: 'center',
+    marginBottom: 32,
+  },
+  successEmoji: {
+    fontSize: 64,
+    marginBottom: 16,
+    color: '#34C759',
+  },
+  modalTitle: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    marginBottom: 8,
+    color: '#000',
+  },
+  modalHandle: {
+    fontSize: 24,
+    fontWeight: '600',
+    color: '#007AFF',
+    textAlign: 'center',
+  },
+  infoSection: {
+    backgroundColor: '#E8F5E9',
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 16,
+  },
+  infoTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 8,
+    color: '#2E7D32',
+  },
+  infoText: {
+    fontSize: 14,
+    color: '#2E7D32',
+    lineHeight: 20,
+  },
+  warningSection: {
+    backgroundColor: '#FFF3E0',
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 24,
+    borderLeftWidth: 4,
+    borderLeftColor: '#FF9800',
+  },
+  warningTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 8,
+    color: '#E65100',
+  },
+  warningText: {
+    fontSize: 14,
+    color: '#E65100',
+    lineHeight: 20,
+  },
+  warningBold: {
+    fontWeight: 'bold',
+  },
+  backupSection: {
+    backgroundColor: '#F8F9FA',
+    padding: 20,
+    borderRadius: 12,
+    marginBottom: 24,
+  },
+  backupTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    marginBottom: 8,
+    color: '#000',
+  },
+  backupText: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 20,
+    lineHeight: 20,
+  },
+  qrContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#fff',
+    padding: 20,
+    borderRadius: 12,
+    marginBottom: 16,
+  },
+  backupButton: {
+    backgroundColor: '#007AFF',
+    paddingVertical: 14,
+    borderRadius: 10,
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  backupButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  backupNote: {
+    fontSize: 12,
+    color: '#999',
+    textAlign: 'center',
+    fontStyle: 'italic',
+  },
+  continueButton: {
+    backgroundColor: '#34C759',
+    paddingVertical: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  continueButtonText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  skipButton: {
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  skipButtonText: {
+    color: '#999',
+    fontSize: 14,
   },
 })
